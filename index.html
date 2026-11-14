@@ -15,9 +15,11 @@ p{text-align:center;color:#aaa}
 .panel{background:#171717;border:1px solid #333;border-radius:18px;padding:20px;margin-top:25px}
 .upload{display:block;border:2px dashed #555;border-radius:14px;padding:35px 12px;text-align:center;cursor:pointer;color:#bbb}
 input{display:none}
-img{width:100%;max-height:300px;object-fit:contain;margin-top:15px;border-radius:12px}
-button{width:100%;padding:15px;border:0;border-radius:12px;background:#8b5cf6;color:white;font-weight:bold;font-size:16px;margin-top:18px}
-textarea{width:100%;height:130px;background:#101010;color:white;border:1px solid #444;border-radius:12px;padding:12px;margin-top:15px}
+#preview{width:100%;max-height:300px;object-fit:contain;margin-top:15px;border-radius:12px}
+button{width:100%;padding:15px;border:0;border-radius:12px;background:#8b5cf6;color:white;font-weight:bold;font-size:16px;margin-top:18px;cursor:pointer}
+button:disabled{opacity:.5;cursor:wait}
+textarea{width:100%;height:180px;background:#101010;color:white;border:1px solid #444;border-radius:12px;padding:12px;margin-top:15px;resize:vertical}
+#status{text-align:center;color:#c4b5fd;font-size:13px;margin-top:12px}
 small{display:block;text-align:center;color:#777;margin-top:25px}
 </style>
 </head>
@@ -25,29 +27,120 @@ small{display:block;text-align:center;color:#777;margin-top:25px}
 <main>
 <h1>KENZIE<span>.AI</span></h1>
 <p>Ubah gambar menjadi prompt AI dengan mudah.</p>
+
 <div class="panel">
 <label class="upload" for="gambar">
 Pilih gambar dari perangkat kamu
-<input id="gambar" type="file" accept="image/*">
+<input id="gambar" type="file" accept="image/jpeg,image/png,image/webp">
 </label>
-<img id="preview" hidden>
-<button onclick="proses()">GENERATE PROMPT</button>
+
+<img id="preview" hidden alt="Preview gambar">
+
+<button id="generate" onclick="proses()">GENERATE PROMPT</button>
+
+<div id="status">Silakan pilih gambar terlebih dahulu.</div>
+
 <textarea id="hasil" placeholder="Hasil prompt akan muncul di sini..." readonly></textarea>
+
+<button id="copy" onclick="salin()" hidden>SALIN PROMPT</button>
 </div>
+
 <small>KENZIE.AI © 2026 — Lifetime Access</small>
 </main>
+
 <script>
 const gambar=document.getElementById('gambar');
 const preview=document.getElementById('preview');
+const hasil=document.getElementById('hasil');
+const statusText=document.getElementById('status');
+const generate=document.getElementById('generate');
+const copy=document.getElementById('copy');
+
 gambar.addEventListener('change',()=>{
 const file=gambar.files[0];
-if(file){
+
+hasil.value='';
+copy.hidden=true;
+
+if(!file)return;
+
+if(!['image/jpeg','image/png','image/webp'].includes(file.type)){
+statusText.textContent='Gunakan gambar JPG, PNG, atau WEBP.';
+gambar.value='';
+preview.hidden=true;
+return;
+}
+
+if(file.size>8*1024*1024){
+statusText.textContent='Ukuran gambar maksimal 8 MB.';
+gambar.value='';
+preview.hidden=true;
+return;
+}
+
 preview.src=URL.createObjectURL(file);
 preview.hidden=false;
-}
+statusText.textContent='Gambar berhasil dipilih.';
 });
-function proses(){
-alert("Fitur AI sedang dalam tahap pemasangan. Silakan tunggu tahap berikutnya.");
+
+async function proses(){
+const file=gambar.files[0];
+
+if(!file){
+statusText.textContent='Pilih gambar terlebih dahulu.';
+return;
+}
+
+generate.disabled=true;
+generate.textContent='SEDANG MENGANALISIS...';
+statusText.textContent='KENZIE.AI sedang membaca gambar kamu...';
+hasil.value='';
+copy.hidden=true;
+
+try{
+const base64=await new Promise((resolve,reject)=>{
+const reader=new FileReader();
+reader.onload=()=>resolve(reader.result.split(',')[1]);
+reader.onerror=()=>reject(new Error('Gagal membaca gambar.'));
+reader.readAsDataURL(file);
+});
+
+const response=await fetch('/api/generate',{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify({
+image:base64,
+mimeType:file.type
+})
+});
+
+const data=await response.json();
+
+if(!response.ok){
+throw new Error(data.error||'Gagal menghubungi Gemini.');
+}
+
+hasil.value=data.prompt;
+copy.hidden=false;
+statusText.textContent='Prompt berhasil dibuat!';
+
+}catch(error){
+statusText.textContent=error.message||'Terjadi kesalahan. Silakan coba lagi.';
+}finally{
+generate.disabled=false;
+generate.textContent='GENERATE PROMPT';
+}
+}
+
+async function salin(){
+try{
+await navigator.clipboard.writeText(hasil.value);
+statusText.textContent='Prompt berhasil disalin!';
+}catch(error){
+hasil.select();
+document.execCommand('copy');
+statusText.textContent='Silakan periksa hasil salinan.';
+}
 }
 </script>
 </body>
